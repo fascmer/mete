@@ -33,15 +33,28 @@ jobs:
       - name: Generate minimal Meteor project
         if: steps.check.outputs.project == 'missing'
         run: |
+          # Save the workspace path
+          WORKSPACE="$GITHUB_WORKSPACE"
+          
+          # Go to parent dir to create temp app
           cd ..
+          
+          # Create temporary Meteor app
           meteor create temp-app --minimal
           cd temp-app
+          
+          # Remove frontend files
           rm -rf client imports
-
+          
+          # Create server/main.js
           mkdir -p server
           echo -e "import { WebApp } from 'meteor/webapp';\n\nWebApp.connectHandlers.use('/', (req, res, next) => {\n  if (req.url === '/') {\n    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });\n    res.end('Hello World');\n  } else {\n    next();\n  }\n});" > server/main.js
-
-          cp -r .meteor server ../$GITHUB_WORKSPACE/
+          
+          # Copy generated files BACK to the original workspace
+          cp -r .meteor "$WORKSPACE/"
+          cp -r server "$WORKSPACE/"
+          
+          # Clean up
           cd ..
           rm -rf temp-app
 
