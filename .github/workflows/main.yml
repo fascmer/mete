@@ -1,0 +1,66 @@
+name: Generate Meteor Project
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      # 检查是否已是 Meteor 项目（避免重复生成）
+      - name: Check if already initialized
+        id: check
+        run: |
+          if [ -d ".meteor" ]; then
+            echo "project=exists" >> $GITHUB_OUTPUT
+          else
+            echo "project=missing" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Meteor
+        if: steps.check.outputs.project == 'missing'
+        run: |
+          curl https://install.meteor.com/ | sh
+          echo "$HOME/.meteor" >> $GITHUB_PATH
+
+      - name: Create Meteor project in current dir
+        if: steps.check.outputs.project == 'missing'
+        run: |
+          # meteor create 不能直接创建到非空目录，但我们可以 trick 它
+          cd ..
+          meteor create temp-app
+          rm -rf temp-app/client temp-app/imports
+          mkdir -p $GITHUB_WORKSPACE/server
+          cp -r temp-app/.meteor $GITHUB_WORKSPACE/
+          echo "import { WebApp } from 'meteor/webapp';
+
+WebApp.connectHandlers.use('/', (req, res, next) => {
+  if (req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Hello World');
+  } else {
+    next();
+  }
+});" > $GITHUB_WORKSPACE/server/main.js
+          rm -rf temp-app
+
+      - name: Set Git identity
+        if: steps.check.outputs.project == 'missing'
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Commit and push generated files
+        if: steps.check.outputs.project == 'missing'
+        run: |
+          git add .
+          git commit -m "feat: auto-generate minimal Meteor.js project"
+          git push origin main
