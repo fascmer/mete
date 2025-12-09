@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write  # 👈 必须！
+
 jobs:
   setup:
     runs-on: ubuntu-latest
@@ -14,6 +17,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check if already initialized
         id: check
@@ -33,40 +37,23 @@ jobs:
       - name: Generate minimal Meteor project
         if: steps.check.outputs.project == 'missing'
         run: |
-          # Save the workspace path
           WORKSPACE="$GITHUB_WORKSPACE"
-          
-          # Go to parent dir to create temp app
           cd ..
-          
-          # Create temporary Meteor app
           meteor create temp-app --minimal
           cd temp-app
-          
-          # Remove frontend files
           rm -rf client imports
-          
-          # Create server/main.js
           mkdir -p server
           echo -e "import { WebApp } from 'meteor/webapp';\n\nWebApp.connectHandlers.use('/', (req, res, next) => {\n  if (req.url === '/') {\n    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });\n    res.end('Hello World');\n  } else {\n    next();\n  }\n});" > server/main.js
-          
-          # Copy generated files BACK to the original workspace
           cp -r .meteor "$WORKSPACE/"
           cp -r server "$WORKSPACE/"
-          
-          # Clean up
           cd ..
           rm -rf temp-app
-
-      - name: Set Git identity
-        if: steps.check.outputs.project == 'missing'
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
       - name: Commit and push
         if: steps.check.outputs.project == 'missing'
         run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add .
           git commit -m "feat: auto-generate minimal Meteor.js Hello World project"
-          git push origin main
+          git push
