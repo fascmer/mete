@@ -3,7 +3,7 @@ name: Generate Meteor Project
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   setup:
@@ -15,7 +15,6 @@ jobs:
         with:
           ref: main
 
-      # 检查是否已是 Meteor 项目（避免重复生成）
       - name: Check if already initialized
         id: check
         run: |
@@ -31,16 +30,21 @@ jobs:
           curl https://install.meteor.com/ | sh
           echo "$HOME/.meteor" >> $GITHUB_PATH
 
-      - name: Create Meteor project in current dir
+      - name: Generate minimal Meteor project
         if: steps.check.outputs.project == 'missing'
         run: |
-          # meteor create 不能直接创建到非空目录，但我们可以 trick 它
+          # Create a temporary Meteor app
           cd ..
-          meteor create temp-app
-          rm -rf temp-app/client temp-app/imports
-          mkdir -p $GITHUB_WORKSPACE/server
-          cp -r temp-app/.meteor $GITHUB_WORKSPACE/
-          echo "import { WebApp } from 'meteor/webapp';
+          meteor create temp-app --minimal
+          cd temp-app
+
+          # Remove default client-side files
+          rm -rf client imports
+
+          # Write custom server/main.js
+          mkdir -p server
+          cat > server/main.js << 'EOF'
+import { WebApp } from 'meteor/webapp';
 
 WebApp.connectHandlers.use('/', (req, res, next) => {
   if (req.url === '/') {
@@ -49,7 +53,12 @@ WebApp.connectHandlers.use('/', (req, res, next) => {
   } else {
     next();
   }
-});" > $GITHUB_WORKSPACE/server/main.js
+});
+EOF
+
+          # Copy generated files to workspace
+          cp -r .meteor server ../$GITHUB_WORKSPACE/
+          cd ..
           rm -rf temp-app
 
       - name: Set Git identity
@@ -58,9 +67,9 @@ WebApp.connectHandlers.use('/', (req, res, next) => {
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
-      - name: Commit and push generated files
+      - name: Commit and push
         if: steps.check.outputs.project == 'missing'
         run: |
           git add .
-          git commit -m "feat: auto-generate minimal Meteor.js project"
+          git commit -m "feat: auto-generate minimal Meteor.js Hello World project"
           git push origin main
